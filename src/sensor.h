@@ -77,4 +77,24 @@ void getSensorData(float &temp, float &hum, float &pres, float &p_r)
 }
 
 
+float batery_level()
+{
 
+  analogSetAttenuation(ADC_11db);
+
+  float measurement = analogRead(35);
+  delay(20);
+  measurement += analogRead(35);
+  delay(20);
+  measurement += analogRead(35);
+  measurement /= 3;
+
+  float battery_voltage = (measurement / 4095.0) * 1.0 * 3.55 * 2; // Vref * attenuation * voltage divider
+
+  Serial.print("Battery Voltage: ");
+  Serial.println(battery_voltage);
+  Serial.print("ADC Count: ");
+  Serial.println(measurement);
+
+  return battery_voltage;
+}

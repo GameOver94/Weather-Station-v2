@@ -2,7 +2,7 @@
 #include <time.h>
 #include <sys/time.h>
 
-#include <AsyncMqttClient.h>
+#include "EspMQTTClient.h"
 #include <ArduinoJson.h>
 
 #include <credentials.h>
@@ -11,43 +11,19 @@ const char NTP_SERVER[] = "at.pool.ntp.org";
 const char TZ_INFO[] = "CET-1CEST-2,M3.5.0/02:00:00,M10.5.0/03:00:00"; // See https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv for Timezone codes for your region
 const char daysOfTheWeek[7][11] = {"Sonntag", "Mondtag", "Dienstag", "Mitwoch", "Donnerstag", "Freitag", "Samstag"};
 
-//const char *mqtt_server = "test.mosquitto.org";
-#define MQTT_HOST IPAddress(192, 168, 1, 14)
-const char *device_name = "WeatherStation_9ae544a6";
 
-String STAT_TOPIC = "/devices/" + String(device_name) + "/status";
-String LOG_MEASUREMENT_TOPIC = "/logger/" + String(device_name) + "/measurement";
+const char* device_name = "WeatherStation_9ae54469";
+const String STAT_TOPIC = "/devices/" + String(device_name) + "/status";
+const String LOG_MEASUREMENT_TOPIC = "/logger/" + String(device_name) + "/measurement";
 
-WiFiClient espClient;
-AsyncMqttClient mqttClient;
+EspMQTTClient MQTTclient(
+  ssid,
+  password,
+  "192.168.1.14",  // MQTT Broker server ip
+  device_name,     // Client name that uniquely identify your device
+  1883              // The MQTT port, default to 1883. this line can be omitted
+);
 
-bool connectWiFi()
-{
-  Serial.println("----- connnect to WifFi -----");
-  WiFi.begin(ssid, password);
-
-  int counter = 0;
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(200);
-    if (++counter > 60)
-      break;
-
-    Serial.print(".");
-  }
-  Serial.println(".");
-
-  if (WiFi.status() == WL_CONNECTED)
-  {
-    Serial.println("WiFi connencted");
-    return true;
-  }
-  else
-  {
-    Serial.println("WiFi connection faild");
-    return false;
-  }
-}
 
 void setNTP()
 {
@@ -60,52 +36,18 @@ void setNTP()
   Serial.println(&timeinfo, "Datum: %d.%m.%y  Zeit: %H:%M:%S");
 }
 
-void onMqttConnect(bool sessionPresent)
+
+void sendStatus()
 {
-  Serial.println();
-  Serial.println("connected");
-  Serial.print("Session present: ");
-  Serial.println(sessionPresent);
-  
-  uint16_t packetIdPub1 = mqttClient.publish(STAT_TOPIC.c_str(), 1, true, "connected");
-  Serial.print("Publishing Status at QoS 1, packetId: ");
-  Serial.println(packetIdPub1);
+  bool MQTTstatus = MQTTclient.publish(STAT_TOPIC, "connected", true);
+  Serial.print("Publishing Status sucessfull: ");
+  Serial.println(MQTTstatus);
 }
-
-bool connectMQTT()
-{
-  Serial.println("----- connnect to MQTT server -----");
-  //mqttClient.setServer(mqtt_server, 1883);
-  mqttClient.setServer(MQTT_HOST, 1883);
-  mqttClient.setClientId(device_name);
-  mqttClient.setKeepAlive(330);
-
-  mqttClient.onConnect(onMqttConnect);
-  mqttClient.connect();
-
-  int counter = 0;
-
-  while (!mqttClient.connected())
-  {
-    Serial.print(".");
-
-    if (++counter >= 50)
-    {
-      Serial.println();
-      Serial.println("MQTT connection failed");
-      return false;
-    }
-
-    delay(200);
-  }
-  return true;
-}
-
 
 void sendData(float temp, float hum, float press, float p_r, float bat)
 {
-  StaticJsonDocument<128> measurement;
-  char buffer[128];
+  StaticJsonDocument<256> measurement;
+  char buffer[256];
 
   Serial.println("----- send mssage -----");
 
@@ -116,33 +58,14 @@ void sendData(float temp, float hum, float press, float p_r, float bat)
   measurement["battery voltage"] = bat;
 
   serializeJson(measurement, buffer);
-  uint16_t messageID = mqttClient.publish(LOG_MEASUREMENT_TOPIC.c_str(), 2, false, buffer);
+  bool MQTTmessage = MQTTclient.publish(LOG_MEASUREMENT_TOPIC, buffer);
 
-   if (messageID > 0)
+   if (MQTTmessage)
   {
-    Serial.print("Message send sucessful. ID: ");
-    Serial.println(messageID);
+    Serial.print("Message send sucessful.");
   }
   else
   {
     Serial.println("Faild to send message.");
   }
-
-  delay(200);
-  delay(200);
-  delay(200);
-  delay(200);
-  delay(200);
-
-  delay(200);
-  delay(200);
-  delay(200);
-  delay(200);
-  delay(200);
-
-  delay(200);
-  delay(200);
-  delay(200);
-  delay(200);
-  delay(200);
 }

@@ -26,19 +26,20 @@
 #include <cmath>
 
 #define uS_TO_S_FACTOR 1000000 //Conversion factor for micro seconds to seconds
-#define TIME_TO_SLEEP 300      //Time ESP32 will go to sleep (in seconds)
+#define TIME_TO_SLEEP 60       //Time ESP32 will go to sleep (in seconds)
 
 // Globale Variabeln RTC RAM
 RTC_DATA_ATTR int bootCount = 0;
 RTC_DATA_ATTR int errorCount = 0;
+RTC_DATA_ATTR bool firstConnection = true;
 
 // Globale Variablen
 
 void print_wakeup_reason();
-float batery_level();
 void error_hander();
 void setClockManually();
 void readClock();
+void onConnectionEstablished();
 
 void setup()
 {
@@ -48,75 +49,12 @@ void setup()
   Serial.println();
   Serial.println("---- Weather Station v2 ----");
 
-  // first boot
-
-  if (bootCount == 0)
-  {
-    bool WiFi_status = connectWiFi();
-    if (WiFi_status)
-    {
-      Serial.println();
-      setNTP();
-    }
-    else
-    {
-      ESP.restart();
-    }
-  }
-
   //Increment boot number and print it every reboot
   ++bootCount;
   Serial.println("Boot number: " + String(bootCount));
 
   //Print the wakeup reason for ESP32
   print_wakeup_reason();
-
-  // connect to MQTT Server
-  Serial.println();
-  bool MQTT_status = false;
-
-  if (bootCount > 0)
-  {
-    bool WiFi_status = connectWiFi();
-    if (WiFi_status)
-    {
-      Serial.println();
-      MQTT_status = connectMQTT();
-    }
-    else
-    {
-      ++errorCount;
-      error_hander();
-    }
-
-    if (MQTT_status)
-    {
-      // Get Sensor Data
-      float temp(NAN), hum(NAN), pres(NAN), p_r(NAN);
-
-      Serial.println();
-      bool Sensor_status = setupSensor();
-      if (Sensor_status)
-      {
-        getSensorData(temp, hum, pres, p_r);
-        float bat = batery_level();
-        printSensorValues(temp, hum, pres, p_r);
-
-        Serial.println();
-        sendData(temp, hum, pres, p_r, bat);
-        
-      }
-    }
-    else
-    {
-      ++errorCount;
-      error_hander();
-    }
-  }
-
-  mqttClient.disconnect();
-  WiFi.disconnect();
-  delay(200);
 
   // Print current Time
   Serial.println();
@@ -127,13 +65,55 @@ void setup()
   esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
   Serial.println("Setup ESP32 to sleep for every " + String(TIME_TO_SLEEP) + " Seconds");
 
-  //Go to sleep now
-  errorCount = 0;
-  esp_deep_sleep_start();
+  MQTTclient.enableDebuggingMessages();
+  MQTTclient.enableMQTTPersistence();
+  MQTTclient.setMaxPacketSize(256);
+
+}
+
+void onConnectionEstablished()
+{
+  Serial.println();
+  Serial.println("connected");
+
+  // first boot
+
+  if (firstConnection)
+  {
+    Serial.println();
+    setNTP();
+    firstConnection = false;
+  }
+
+  sendStatus();
+
+  // Get Sensor Data
+  float temp(NAN), hum(NAN), pres(NAN), p_r(NAN);
+
+  Serial.println();
+  bool Sensor_status = setupSensor();
+  if (Sensor_status)
+  {
+    getSensorData(temp, hum, pres, p_r);
+    float bat = batery_level();
+    printSensorValues(temp, hum, pres, p_r);
+
+    Serial.println();
+    sendData(temp, hum, pres, p_r, bat);
+  }
 }
 
 void loop()
 {
+  MQTTclient.loop();
+  delay(10);
+
+  if (millis() > 5000)
+  {
+  //Go to sleep now
+  errorCount = 0;
+  esp_deep_sleep_start();
+  }
 }
 
 //Function that prints the reason by which ESP32 has been awaken from sleep
@@ -190,27 +170,6 @@ void readClock()
   Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 }
 
-float batery_level()
-{
-
-  analogSetAttenuation(ADC_11db);
-
-  float measurement = analogRead(35);
-  delay(20);
-  measurement += analogRead(35);
-  delay(20);
-  measurement += analogRead(35);
-  measurement /= 3;
-
-  float battery_voltage = (measurement / 4095.0) * 1.0 * 3.55 * 2; // Vref * attenuation * voltage divider
-
-  Serial.print("Battery Voltage: ");
-  Serial.println(battery_voltage);
-  Serial.print("ADC Count: ");
-  Serial.println(measurement);
-
-  return battery_voltage;
-}
 
 void error_hander()
 {
@@ -219,7 +178,7 @@ void error_hander()
   Serial.println("---- Error Occured ----");
   if (errorCount < 8)
   {
-    long sleep_time = 60ULL * pow(errorCount,2);
+    long sleep_time = 60ULL * pow(errorCount, 2);
     esp_sleep_enable_timer_wakeup(sleep_time * uS_TO_S_FACTOR);
     Serial.println("Setup ESP32 to sleep for every " + String(sleep_time) + " Seconds");
   }
