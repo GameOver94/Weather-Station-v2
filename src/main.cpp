@@ -1,32 +1,22 @@
-/***************************************************************************
-  This is a library for the BME280 humidity, temperature & pressure sensor
-
-  Designed specifically to work with the Adafruit BME280 Breakout
-  ----> http://www.adafruit.com/products/2650
-
-  These sensors use I2C or SPI to communicate, 2 or 4 pins are required
-  to interface. The device's I2C address is either 0x76 or 0x77.
-
-  Adafruit invests time and resources providing this open source code,
-  please support Adafruit andopen-source hardware by purchasing products
-  from Adafruit!
-
-  Written by Limor Fried & Kevin Townsend for Adafruit Industries.
-  BSD license, all text above must be included in any redistribution
-  See the LICENSE file for details.
- ***************************************************************************/
-
 #include <Wire.h>
 #include <SPI.h>
-
-#include <network.h> // handling of WiFi and NTP
-#include <sensor.h>  // handling of de BME680
-
-#include <driver/adc.h>
 #include <cmath>
 
+// Globale Variablen über alle Datein
+
+int max_ontime = MAX_ONTIME;
+int shutdown_delay = MAX_ONTIME + 500;
+
+#include <network.h> // handling of WiFi and NTP
+#if defined BME280
+#include <sensor_BME280.h>
+#elif defined BMP280
+#include <sensor_BMP280.h>
+#else
+#error "No Supported sensor defined"
+#endif
+
 #define uS_TO_S_FACTOR 1000000 //Conversion factor for micro seconds to seconds
-#define TIME_TO_SLEEP 60       //Time ESP32 will go to sleep (in seconds)
 
 // Globale Variabeln RTC RAM
 RTC_DATA_ATTR int bootCount = 0;
@@ -34,7 +24,6 @@ RTC_DATA_ATTR int errorCount = 0;
 RTC_DATA_ATTR bool firstConnection = true;
 
 // Globale Variablen
-
 void print_wakeup_reason();
 void error_hander();
 void setClockManually();
@@ -56,34 +45,34 @@ void setup()
   //Print the wakeup reason for ESP32
   print_wakeup_reason();
 
+#ifdef RTC_CLOCK
   // Print current Time
-  Serial.println();
   readClock();
+#endif
 
-  //Set timer to 120 seconds
+  //Set deep sleep timer
   Serial.println();
   esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
   Serial.println("Setup ESP32 to sleep for every " + String(TIME_TO_SLEEP) + " Seconds");
 
   MQTTclient.enableDebuggingMessages();
+  MQTTclient.setKeepAlive(360);
   MQTTclient.enableMQTTPersistence();
   MQTTclient.setMaxPacketSize(256);
-
 }
 
 void onConnectionEstablished()
 {
-  Serial.println();
-  Serial.println("connected");
 
+#ifdef RTC_CLOCK
   // first boot
-
   if (firstConnection)
   {
     Serial.println();
     setNTP();
     firstConnection = false;
   }
+#endif
 
   sendStatus();
 
@@ -108,11 +97,23 @@ void loop()
   MQTTclient.loop();
   delay(10);
 
-  if (millis() > 5000)
+  if (millis() >= shutdown_delay) // executes when the microcontroller runs to long (error occured during WiFi or MQTT connection)
   {
-  //Go to sleep now
-  errorCount = 0;
-  esp_deep_sleep_start();
+    //Go to sleep now
+    Serial.println();
+    errorCount=0;
+    Serial.printf("Going to sleep after %fs \n",millis()/1000.0);
+    esp_deep_sleep_start();
+  }
+
+  if (millis() > max_ontime) // executes when the microcontroller runs to long (error occured during WiFi or MQTT connection)
+  {
+    //Go to sleep now
+    ++ errorCount;
+    error_hander();
+
+    //Serial.printf("Going to sleep after %fs \n",millis()/1000.0);
+    //esp_deep_sleep_start();
   }
 }
 
@@ -160,32 +161,38 @@ void setClockManually()
 
 void readClock()
 {
+  if (bootCount == 1)
+  {
+    return;
+  }
+
   tm timeinfo;
 
   configTzTime(TZ_INFO, NTP_SERVER);
   getLocalTime(&timeinfo);
 
+  Serial.println();
   Serial.println("---- Current Time ----");
   //Serial.println(&timeinfo, "Datum: %d.%m.%y  Zeit: %H:%M:%S");
   Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 }
-
 
 void error_hander()
 {
 
   Serial.println();
   Serial.println("---- Error Occured ----");
-  if (errorCount < 8)
+  if (errorCount < 6)
   {
     long sleep_time = 60ULL * pow(errorCount, 2);
     esp_sleep_enable_timer_wakeup(sleep_time * uS_TO_S_FACTOR);
     Serial.println("Setup ESP32 to sleep for every " + String(sleep_time) + " Seconds");
+    Serial.printf("Going to sleep after %fs \n",millis()/1000.0);
   }
   else
   {
-    esp_sleep_enable_timer_wakeup(3600ULL * uS_TO_S_FACTOR);
-    Serial.println("Setup ESP32 to sleep for every 3600 Seconds");
+    Serial.println("Multiple Errors occured. Restting now!");
+    ESP.restart();
   }
   esp_deep_sleep_start();
 }
