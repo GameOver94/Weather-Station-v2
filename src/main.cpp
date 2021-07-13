@@ -8,12 +8,17 @@ int max_ontime = MAX_ONTIME;
 int shutdown_delay = MAX_ONTIME + 500;
 
 #include <network.h> // handling of WiFi and NTP
+
+#ifdef RTC_CLOCK
+  #include <rtc.h>
+#endif
+
 #if defined BME280
-#include <sensor_BME280.h>
+  #include <sensor_BME280.h>
 #elif defined BMP280
-#include <sensor_BMP280.h>
+  #include <sensor_BMP280.h>
 #else
-#error "No Supported sensor defined"
+  #error "No Supported sensor defined"
 #endif
 
 #define uS_TO_S_FACTOR 1000000 //Conversion factor for micro seconds to seconds
@@ -26,8 +31,7 @@ RTC_DATA_ATTR bool firstConnection = true;
 // Globale Variablen
 void print_wakeup_reason();
 void error_hander();
-void setClockManually();
-void readClock();
+
 void onConnectionEstablished();
 
 //-------------------------------------------------------------------------------------------------------------------
@@ -49,7 +53,7 @@ void setup()
 
 #ifdef RTC_CLOCK
   // Print current Time
-  readClock();
+  readClock(bootCount);
 #endif
 
   //Set deep sleep timer
@@ -66,7 +70,6 @@ void setup()
 }
 
 //-------------------------------------------------------------------------------------------------------------------
-
 void onConnectionEstablished()
 {
 
@@ -104,7 +107,6 @@ void onConnectionEstablished()
 }
 
 //-------------------------------------------------------------------------------------------------------------------
-
 void loop()
 {
   MQTTclient.loop();
@@ -114,22 +116,21 @@ void loop()
   {
     //Go to sleep now
     Serial.println();
-    errorCount=0;
-    Serial.printf("Going to sleep after %fs \n",millis()/1000.0);
+    errorCount = 0;
+    Serial.printf("Going to sleep after %fs \n", millis() / 1000.0);
     esp_deep_sleep_start();
   }
 
   if (millis() > max_ontime) // executes when the microcontroller runs to long (error occured during WiFi or MQTT connection)
   {
     //Go to sleep now
-    ++ errorCount;
+    ++errorCount;
     error_hander();
 
     //Serial.printf("Going to sleep after %fs \n",millis()/1000.0);
     //esp_deep_sleep_start();
   }
 }
-
 
 //-------------------------------------------------------------------------------------------------------------------
 //Function that prints the reason by which ESP32 has been awaken from sleep
@@ -161,42 +162,6 @@ void print_wakeup_reason()
   }
 }
 
-
-//-------------------------------------------------------------------------------------------------------------------
-void setClockManually()
-{
-
-  // Für weitere Details der Lösung siehe:
-  // https://github.com/esp8266/Arduino/blob/master/libraries/esp8266/examples/NTP-TZ-DST/NTP-TZ-DST.ino
-
-#define RTC_UTC_TEST 1510592825 // 1510592825 = Monday 13 November 2017 17:07:05 UTC
-
-  time_t rtc = RTC_UTC_TEST;
-  timeval tv = {rtc, 0};
-  settimeofday(&tv, nullptr);
-}
-
-
-//-------------------------------------------------------------------------------------------------------------------
-void readClock()
-{
-  if (bootCount == 1)
-  {
-    return;
-  }
-
-  tm timeinfo;
-
-  configTzTime(TZ_INFO, NTP_SERVER);
-  getLocalTime(&timeinfo);
-
-  Serial.println();
-  Serial.println("---- Current Time ----");
-  //Serial.println(&timeinfo, "Datum: %d.%m.%y  Zeit: %H:%M:%S");
-  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
-}
-
-
 //-------------------------------------------------------------------------------------------------------------------
 void error_hander()
 {
@@ -208,7 +173,7 @@ void error_hander()
     long sleep_time = 60ULL * pow(errorCount, 2);
     esp_sleep_enable_timer_wakeup(sleep_time * uS_TO_S_FACTOR);
     Serial.println("Setup ESP32 to sleep for every " + String(sleep_time) + " Seconds");
-    Serial.printf("Going to sleep after %fs \n",millis()/1000.0);
+    Serial.printf("Going to sleep after %fs \n", millis() / 1000.0);
   }
   else
   {
