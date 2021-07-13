@@ -13,6 +13,7 @@ const char daysOfTheWeek[7][11] = {"Sonntag", "Mondtag", "Dienstag", "Mitwoch", 
 
 const char *device_name = DEVICE_NAME;
 const String STAT_TOPIC = "/devices/" + String(device_name) + "/status";
+const String STAT_ERROR_TOPIC = "/devices/" + String(device_name) + "/errors";
 const String LOG_MEASUREMENT_TOPIC = "/logger/" + String(device_name) + "/measurement";
 
 EspMQTTClient MQTTclient(
@@ -62,14 +63,28 @@ void sendData(float temp, float hum, float press, float p_r, float bat)
   measurement["battery voltage"] = bat;
 
   serializeJson(measurement, buffer);
-  bool MQTTmessage = MQTTclient.publish(LOG_MEASUREMENT_TOPIC, buffer);
+  bool MQTTstatus = MQTTclient.publish(LOG_MEASUREMENT_TOPIC, buffer);
 
-  if (MQTTmessage)
+  if (MQTTstatus)
   {
     Serial.printf("Message send sucessful after %fs \n",millis()/1000.0);
 
     shutdown_delay = millis() + 500;
     max_ontime = shutdown_delay + 500;
+  }
+  else
+  {
+    Serial.println("Faild to send message.");
+  }
+}
+
+void sendSensorError()
+{
+  bool MQTTstatus = MQTTclient.publish(STAT_ERROR_TOPIC, "Sensor Error");
+
+  if (MQTTstatus)
+  {
+    Serial.printf("Error Message send sucessful after %fs \n",millis()/1000.0);
   }
   else
   {

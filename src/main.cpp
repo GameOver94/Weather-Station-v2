@@ -30,6 +30,8 @@ void setClockManually();
 void readClock();
 void onConnectionEstablished();
 
+//-------------------------------------------------------------------------------------------------------------------
+
 void setup()
 {
   Serial.begin(115200);
@@ -55,11 +57,15 @@ void setup()
   esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
   Serial.println("Setup ESP32 to sleep for every " + String(TIME_TO_SLEEP) + " Seconds");
 
+#ifdef DEBUGGING
   MQTTclient.enableDebuggingMessages();
+#endif
   MQTTclient.setKeepAlive(360);
   MQTTclient.enableMQTTPersistence();
   MQTTclient.setMaxPacketSize(256);
 }
+
+//-------------------------------------------------------------------------------------------------------------------
 
 void onConnectionEstablished()
 {
@@ -90,7 +96,14 @@ void onConnectionEstablished()
     Serial.println();
     sendData(temp, hum, pres, p_r, bat);
   }
+  else
+  {
+    sendSensorError();
+    error_hander();
+  }
 }
+
+//-------------------------------------------------------------------------------------------------------------------
 
 void loop()
 {
@@ -117,6 +130,8 @@ void loop()
   }
 }
 
+
+//-------------------------------------------------------------------------------------------------------------------
 //Function that prints the reason by which ESP32 has been awaken from sleep
 void print_wakeup_reason()
 {
@@ -146,6 +161,8 @@ void print_wakeup_reason()
   }
 }
 
+
+//-------------------------------------------------------------------------------------------------------------------
 void setClockManually()
 {
 
@@ -159,6 +176,8 @@ void setClockManually()
   settimeofday(&tv, nullptr);
 }
 
+
+//-------------------------------------------------------------------------------------------------------------------
 void readClock()
 {
   if (bootCount == 1)
@@ -177,6 +196,8 @@ void readClock()
   Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 }
 
+
+//-------------------------------------------------------------------------------------------------------------------
 void error_hander()
 {
 
