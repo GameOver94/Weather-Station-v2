@@ -124,7 +124,6 @@ void loop()
   if (millis() > max_ontime) // executes when the microcontroller runs to long (error occured during WiFi or MQTT connection)
   {
     //Go to sleep now
-    ++errorCount;
     error_hander();
 
     //Serial.printf("Going to sleep after %fs \n",millis()/1000.0);
@@ -168,6 +167,8 @@ void error_hander()
 
   Serial.println();
   Serial.println("---- Error Occured ----");
+  ++errorCount;
+  
   if (errorCount < 6)
   {
     long sleep_time = 60ULL * pow(errorCount, 2);

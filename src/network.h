@@ -44,6 +44,9 @@ void sendData(float temp, float hum, float press, float p_r, float bat)
 
   measurement["temperature"] = temp;
   measurement["pressure"] = press / 100.0F;
+  #ifdef BME280
+    measurement["humidity"] = hum;
+  #endif
   measurement["reduced pressure"] = p_r;
   measurement["battery voltage"] = bat;
 
